@@ -6,7 +6,7 @@ CS 124 PA 6: Direct Machine Translation
 Due February 28th @ 5:00PM
 To Do + Deadlines: 
 
-By Saturday: 
+By Saturday (1-4 complete): 
 
 1) Choose a language
  
