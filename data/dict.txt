@@ -3,7 +3,7 @@
 강자:the strong
 같:same
 같이:like
-개:<COUNT>,dog
+개:dog,unit of
 거나:or
 게:crab
 경기:economy
@@ -18,7 +18,7 @@
 기:flag
 기계:machine
 기도:pray,prayer,attempt,try,airway
-길:long
+길:long,street,way
 ㄴ:
 ㄴ다:
 나:I,or
@@ -30,24 +30,24 @@
 다:
 대부분:mostly
 대체:replace,how
-대하:
+대하:about,giant shrimp
 더:more
 던:
 도:
-되:
+되:be
 두드러지:salient
 둔화:slow down
-들:<PLURAL>
+들:
 들어가:
-따르:
+따르:follow
 때문:because
 띄우:float
 ㄹ:
 레몬:lemon
-로:
+로:with,to
 를:
 많:many,a lot
-말:
+말:speech,horse
 면서:
 몇:few
 무섭:scary
@@ -58,14 +58,15 @@
 부터:since,from
 분석적:analytical
 붓:pour,swell,brush
+사람:person,man,human
 사회:society,community,the world
-삭감:deduct,deduction
+삭감:deduction,deduct
 새:bird,new
 생기:liveliness
 석고상:plaster sculpture
 설탕:sugar
 소설:novel
-수:number,can
+수:can,number
 습니다 
 시간:time
 시작:start
@@ -76,35 +77,35 @@
 아:
 아무:any
 아서:
-아야:
+아야:should
 아파트:apartment
-안:not
+안:not,in
 앉:sit
 않:not
 았:
 약육강식:the law of the jungle
 약자:the weak
 어:
-얼굴:face
+얼굴:face,look
 없:
 었:
-에:
+에:in,at
 에서:in,at
 온몸:entire body
 완전하게:completely
-위하:for
-으로:
+위하:in order to,for
+으로:toward
 으며:
 은:be,silver
 은행:bank
 을:
-의:<OF>
-이:two
+의:
+이:two,be
 인간:human,man
 인상:impression,raise
 인지적:cognitive
 임상:clinical practice
-있:
+있:be
 자유주의:liberalism
 자주:often
 작은술:teaspoon
@@ -124,16 +125,16 @@
 집중:focus
 책상:desk,table
 추출액:extract
-치밀:calculated
+치밀:meticulous
 커피:coffee
 컵:cup
 티백:teabag
 패배:defeat
 필요:need
-하:
+하:do
 항상:always
 행동:action
 현관:entrance
-현상:phenomenon
+현상:phenomenon,develop,status quo
 호흡:breath
 홍차:black tea
