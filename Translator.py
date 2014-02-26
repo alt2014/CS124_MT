@@ -12,6 +12,8 @@ class Translator:
         self.preprocessed = []
         self.translated = []
         self.postprocessed = []
+        brown_a = nltk.corpus.brown.tagged_sents()
+        self.unigram_tagger = nltk.UnigramTagger(brown_a)
 
     def preprocess(self, tokenized_sentences):
         f = open(tokenized_sentences, 'r')
@@ -72,8 +74,6 @@ class Translator:
     def importDictionary(self, dictionary_file):
         f = open(dictionary_file, 'r')
 
-        brown_a = nltk.corpus.brown.tagged_sents()
-        unigram_tagger = nltk.UnigramTagger(brown_a)
 
         for line in f:
             line = line.strip()
@@ -84,9 +84,9 @@ class Translator:
             
             if len(entries) > 1 and len(entries[1]) > 1:
                 meanings = entries[1].split(',')
-                annotated_meanings = unigram_tagger.tag(meanings)
+                annotated_meanings = self.unigram_tagger.tag(meanings)
 
-                print annotated_meanings
+                #print annotated_meanings I COMMENTED THIS OUT
                 if word in self.dictionary:
                     self.dictionary[word] = annotated_meanings
                 #else:
@@ -153,18 +153,205 @@ class Translator:
                                 break
                         if not found:
                             translated_sentence.append(english_translations[0][0])
+
+
+                    if korean_pos == 'VV':
+                      translated_sentence[-1] = translated_sentence[-1] + '<VERB>'
                     #else:
             self.translated.append(translated_sentence)
+
+    def reorder(self, sentence):
+        i = 0
+        object_start = 0
+        wasVerb = False
+        while i < len(sentence):
+            word = sentence[i]
+            if word.endswith('<SUBJECT>'):
+                wasVerb = False
+                if i + 1 < len(sentence):
+                    object_start = i + 1
+            elif word.endswith('<OBJECT>'):
+                object_start = i
+                wasVerb = False
+            elif word.endswith('<VERB>') and i != object_start:
+                verb = sentence.pop(i);
+                sentence.insert(object_start, verb)
+                wasVerb = True
+            elif wasVerb:
+                object_start = i
+                #insert a comma
+                wasVerb = False
+            i = i + 1
+
+    def resolvePossessive(self, sentence):
+        i = 0
+        while  i < len(sentence):
+            word = sentence[i]
+            if word.endswith('<POSSESSIVE>'):
+                splitWordPos = i
+                splitWord = word.split('<')
+                resolvedWord = possessiveForm(splitWord[0])
+                i += 1
+                while  i < len(sentence):
+                    tagged = self.unigram_tagger.tag([sentence[i]])
+                    if tagged[0][1] == 'NN' or sentence[i].endswith('<OBJECT>') or sentence[i].endswith('<SUBJECT>'):
+                        sentence[i] = resolvedWord + ' ' + sentence[i]
+                        sentence.pop(splitWordPos)
+                        i -= 1
+                        break
+                    i += 1
+            i += 1
+
+
+
+    def resolvePlural(self, sentence):
+      for i in range(0, len(sentence) - 1):
+          word = sentence[i]
+          if word.endswith('<PLURAL>'):
+              word = word[:-8]
+              sentence[i] = pluralize(word)
+
+    def combineNouns(self,sentence):
+        wasNoun = False
+        i = 0
+        while i < len(sentence):
+            word = sentence[i]
+            tagged = ""
+            if '<' in word:
+                splitWord = word.split('<')
+                tagged = '<' + splitWord[1]
+                word = splitWord[0]
+            annotated = self.unigram_tagger.tag([word])
+            if annotated[0][1] == 'NN' or tagged == '<OBJECT>' or tagged == '<SUBJECT>':
+                if wasNoun:
+                    sentence[i] = sentence[i - 1] + ' ' + word + tagged
+                    sentence.pop(i - 1)
+                    if tagged == '<OBJECT>' or tagged == '<SUBJECT>':
+                        wasNoun = False
+                else:
+                    if tagged == "":
+                        wasNoun = True
+                    i += 1
+
+            else:
+                wasNoun = False
+                i += 1
+
 
     
     ### TO DO: PREPROCESS TRANSLATED SENTENCES (correct grammar, reorder)
     def postprocess(self):
         for sentence in self.translated:
+            self.resolvePlural(sentence)
+            self.resolvePossessive(sentence)
+            self.combineNouns(sentence)
+            self.reorder(sentence)
             sentence[0] = sentence[0].capitalize()
 
             self.postprocessed.append(sentence)
             printSentences(sentence)
 
+possessiveSpecialCases = {
+    'I':'my',
+    'she':'her',
+    'he':'his',
+    'you':'your',
+    'them':'their',
+    'we':'our',
+    'it':'its',
+    'your':'yours',
+    'our':'ours',
+    'her':'hers',
+    'their':'theirs',
+    'who':'whose'
+}
+
+def possessiveForm(word):
+    pf = possessiveSpecialCases.get(word)
+    if pf:
+        return pf
+    if word.endswith('s'):
+        return word + '\''
+    else:
+        return word + '\'s'
+
+#randomly chosen and is not contingent on dev set 
+pluralSpecialCases = {
+    'alumnus':'alumni',
+    'cactus':'cacti',
+    'nucleus':'nuclei',
+    'radius':'radii',
+    'stimulus':'stimuli',
+    'axis':'axes',
+    'analysis':'analyses',
+    'basis':'bases',
+    'crisis':'crises',
+    'diagnosis':'diagnoses',
+    'ellipsis':'ellipses',
+    'hypothesis':'hypotheses',
+    'oasis':'oases',
+    'paralysis':'paralyses',
+    'parenthesis':'parentheses',
+    'synthesis':'syntheses',
+    'synopsis':'synopses',
+    'thesis':'theses',
+    'appendix':'appendices',
+    'beau':'beaux',
+    'child':'children',
+    'ox':'oxen',
+    'person':'people',
+    'bacterium':'bacteria',
+    'corpus':'corpora',
+    'criterion':'criteria',
+    'curriculum':'curricula',
+    'datum':'data',
+    'genus':'genera',
+    'medium':'media',
+    'memorandum':'memoranda',
+    'phenomenon':'phenomena',
+    'stratum':'strata',
+    'deer':'deer',
+    'fish':'fish',
+    'means':'means',
+    'offspring':'offspring',
+    'series':'series',
+    'sheep':'sheep',
+    'species':'species',
+    'foot':'feet',
+    'goose':'geese',
+    'tooth':'teeth',
+    'nebula':'nebulae',
+    'vertebra':'vertebrae',
+    'vita':'vitae',
+    'louse':'lice',
+    'mouse':'mice',
+    'potato':'potatoes',
+    'self':'selves',
+    'syllabus':'syllabi',
+    'tomato':'tomatoes',
+    'torpedo':'torpedoes',
+    'veto':'vetoes',
+    'knife':'knives',
+    'leaf':'leaves',
+    'life':'lives',
+    'hero':'heroes',
+    'hoof':'hooves',
+}
+
+
+
+# Natural Language Toolkit: code_plural
+def pluralize(word):
+    if pluralSpecialCases.get(word):
+        return pluralSpecialCases.get(word)
+    if word.endswith('y'):
+        return word[:-1] + 'ies'
+    elif word[-1] in 'sx' or word[-2:] in ['sh', 'ch']:
+        return word + 'es'
+    elif word.endswith('an'):
+        return word[:-2] + 'en'
+    else:
+        return word + 's'
 
 
 def loadList(file_name):
@@ -175,6 +362,7 @@ def loadList(file_name):
 
 def printSentences(sentences):
     print ' '.join(sentences)
+    #print sentences
 
 def main():
     tokenized_file = "./data/dev-tokenized.txt"
