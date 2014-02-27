@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import nltk
+import en
 
 class Translator:
     def __init__(self):
@@ -45,6 +46,10 @@ class Translator:
                     elif prev_word[1] == 'NNG' and token_pos == 'XSV':
                         combined = prev_word[0]
                         tokens_processed[-1] = (combined, 'VV')
+
+                    # Omit insignificant counting units
+                    elif token_word == '\xea\xb0\x9c' and token_pos == 'NNB':
+                        pass;
 
                     # Change order for prepositions to come before closest noun (i.e. in desk, in society)
                     elif token_pos == 'JKB':
@@ -97,6 +102,7 @@ class Translator:
     def translate(self):
         for sentence in self.preprocessed:
             translated_sentence = []
+            prev_token = ()
             for token in sentence:
                 korean_word = token[0]
                 korean_pos = token[1]
@@ -108,6 +114,9 @@ class Translator:
                 # Tag plural suffix to previous word
                 elif korean_pos == 'XSN' and korean_word == '\xeb\x93\xa4':
                     translated_sentence[-1] = translated_sentence[-1] + '<PLURAL>'
+
+                elif korean_pos == 'NNB' and korean_word == '\xec\x88\x98':
+                    translated_sentence.append("can")
 
                 # Tag possessive(genitive) case marker to previous word
                 elif korean_pos == 'JKG':
@@ -131,8 +140,13 @@ class Translator:
                 elif korean_word == '\xec\x97\x86' or korean_word == '\xec\x95\x8a':
                     translated_sentence.append('<NEGATION>')
 
+                elif korean_pos == 'ETM' and prev_token == '\xea\xb0\x99':
+                    translated_sentence[-1] = "like"
+
                 # skip parts of speech (Korean endings) that do not have English counterparts
                 elif korean_pos[0] == 'E':
+                    if korean_word == '\xec\x97\x88':
+                        translated_sentence.append('<PAST>')
                     pass;
 
                 else:
@@ -154,10 +168,7 @@ class Translator:
                         if not found:
                             translated_sentence.append(english_translations[0][0])
 
-
-                    if korean_pos == 'VV':
-                      translated_sentence[-1] = translated_sentence[-1] + '<VERB>'
-                    #else:
+                prev_token = (korean_word, korean_pos)
             self.translated.append(translated_sentence)
 
     def reorder(self, sentence):
@@ -202,14 +213,45 @@ class Translator:
                     i += 1
             i += 1
 
-
-
     def resolvePlural(self, sentence):
-      for i in range(0, len(sentence) - 1):
+      for i in range(len(sentence)):
           word = sentence[i]
-          if word.endswith('<PLURAL>'):
-              word = word[:-8]
-              sentence[i] = pluralize(word)
+          if '<PLURAL>' in word:
+              pluralized = en.noun.plural(word[:word.find('<')])
+              word = word.replace(word[:word.find('<')], "") # Remove word
+              remainingTags = word.replace('<PLURAL>', "") # Remove plural tag
+              sentence[i] = pluralized + remainingTags
+
+          # Convert nearest noun to "few", "many", "several" or number to plural
+          if word in ["few", "many", "several"] or (word.isdigit() and word != '1'):
+            print word
+            j = i + 1
+            while j < len(sentence):
+                next = sentence[j]
+                if '<NOUN>' in next and '<PLURAL>' not in next:
+                    pluralized = en.noun.plural(next[:next.find('<')])
+                    next = next.replace(next[:next.find('<')], "") # Remove word
+                    sentence[j] = pluralized + next
+                    break
+                j += 1
+
+
+    # Find nearest verb and convert to past tense
+    def resolvePastTense(self, sentence):
+        i = 0
+        while i < len(sentence):
+            if sentence[i] == '<PAST>':
+                j = i-1
+                while j > 0:
+                    prev_token = sentence[j]
+                    if '<VERB>' in prev_token:
+                        past_tense = en.verb.past(prev_token[:prev_token.find('<')])
+                        prev_token = prev_token.replace(prev_token[:prev_token.find('<')], "") # Remove word
+                        sentence[j] = past_tense + prev_token
+                        sentence.pop(i)
+                        break
+                    j -= 1
+            i += 1
 
     def combineNouns(self,sentence):
         wasNoun = False
@@ -237,15 +279,38 @@ class Translator:
                 wasNoun = False
                 i += 1
 
+    def breakup(self,sentence):
+        i = 0
+        while i < len(sentence):
+            token = sentence[i]
+            tokens = token.split()
+            if len(tokens) > 1:
+                sentence = sentence[:i] + tokens + sentence[i+1:]
+            i += len(tokens)
+        return sentence
+
+
+    def tagVerbAndNoun(self,sentence):
+        for i in xrange(len(sentence)):
+            token = sentence[i]
+            tag = self.unigram_tagger.tag([token])
+            if tag[0][1] == 'VB' or tag[0][1] == 'BE':
+                sentence[i] = token + '<VERB>'
+            if tag[0][1] == 'NN':
+                sentence[i] = token + '<NOUN>'
 
     
     ### TO DO: PREPROCESS TRANSLATED SENTENCES (correct grammar, reorder)
     def postprocess(self):
         for sentence in self.translated:
+            sentence = self.breakup(sentence)
+            self.tagVerbAndNoun(sentence)
             self.resolvePlural(sentence)
             self.resolvePossessive(sentence)
             self.combineNouns(sentence)
             self.reorder(sentence)
+            self.resolvePastTense(sentence)
+
             sentence[0] = sentence[0].capitalize()
 
             self.postprocessed.append(sentence)
@@ -275,84 +340,6 @@ def possessiveForm(word):
     else:
         return word + '\'s'
 
-#randomly chosen and is not contingent on dev set 
-pluralSpecialCases = {
-    'alumnus':'alumni',
-    'cactus':'cacti',
-    'nucleus':'nuclei',
-    'radius':'radii',
-    'stimulus':'stimuli',
-    'axis':'axes',
-    'analysis':'analyses',
-    'basis':'bases',
-    'crisis':'crises',
-    'diagnosis':'diagnoses',
-    'ellipsis':'ellipses',
-    'hypothesis':'hypotheses',
-    'oasis':'oases',
-    'paralysis':'paralyses',
-    'parenthesis':'parentheses',
-    'synthesis':'syntheses',
-    'synopsis':'synopses',
-    'thesis':'theses',
-    'appendix':'appendices',
-    'beau':'beaux',
-    'child':'children',
-    'ox':'oxen',
-    'person':'people',
-    'bacterium':'bacteria',
-    'corpus':'corpora',
-    'criterion':'criteria',
-    'curriculum':'curricula',
-    'datum':'data',
-    'genus':'genera',
-    'medium':'media',
-    'memorandum':'memoranda',
-    'phenomenon':'phenomena',
-    'stratum':'strata',
-    'deer':'deer',
-    'fish':'fish',
-    'means':'means',
-    'offspring':'offspring',
-    'series':'series',
-    'sheep':'sheep',
-    'species':'species',
-    'foot':'feet',
-    'goose':'geese',
-    'tooth':'teeth',
-    'nebula':'nebulae',
-    'vertebra':'vertebrae',
-    'vita':'vitae',
-    'louse':'lice',
-    'mouse':'mice',
-    'potato':'potatoes',
-    'self':'selves',
-    'syllabus':'syllabi',
-    'tomato':'tomatoes',
-    'torpedo':'torpedoes',
-    'veto':'vetoes',
-    'knife':'knives',
-    'leaf':'leaves',
-    'life':'lives',
-    'hero':'heroes',
-    'hoof':'hooves',
-}
-
-
-
-# Natural Language Toolkit: code_plural
-def pluralize(word):
-    if pluralSpecialCases.get(word):
-        return pluralSpecialCases.get(word)
-    if word.endswith('y'):
-        return word[:-1] + 'ies'
-    elif word[-1] in 'sx' or word[-2:] in ['sh', 'ch']:
-        return word + 'es'
-    elif word.endswith('an'):
-        return word[:-2] + 'en'
-    else:
-        return word + 's'
-
 
 def loadList(file_name):
     """Loads corpus as lists of lines. """
@@ -375,7 +362,18 @@ def main():
     t.translate()
     t.postprocess()
 
+
+    test_tokenized = "./data/test-tokenized.txt"
+    dictionary_test = "./data/dict2.txt"
+    t2 = Translator()
+    t2.preprocess(test_tokenized)
+
+    t2.importDictionary(dictionary_test)
+    t2.translate()
+    t2.postprocess()
+
 if __name__ == '__main__':
     reload(sys)
     sys.setdefaultencoding('utf-8')
+    print["수"]
     main()
