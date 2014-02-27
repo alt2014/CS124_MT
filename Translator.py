@@ -228,8 +228,9 @@ class Translator:
             j = i + 1
             while j < len(sentence):
                 next = sentence[j]
-                if '<NOUN>' in next and '<PLURAL>' not in next:
-                    pluralized = en.noun.plural(next[:next.find('<')])
+                next_word = next[:next.find('<')]
+                if ('<NOUN>' in next or en.is_noun(next_word)) and '<PLURAL>' not in next:
+                    pluralized = en.noun.plural(next_word)
                     next = next.replace(next[:next.find('<')], "") # Remove word
                     sentence[j] = pluralized + next
                     break
@@ -242,7 +243,7 @@ class Translator:
         while i < len(sentence):
             if sentence[i] == '<PAST>':
                 j = i-1
-                while j > 0:
+                while j >= 0:
                     prev_token = sentence[j]
                     if '<VERB>' in prev_token:
                         past_tense = en.verb.past(prev_token[:prev_token.find('<')])
@@ -285,6 +286,7 @@ class Translator:
             token = sentence[i]
             tokens = token.split()
             if len(tokens) > 1:
+
                 sentence = sentence[:i] + tokens + sentence[i+1:]
             i += len(tokens)
         return sentence
