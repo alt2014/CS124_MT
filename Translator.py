@@ -237,6 +237,64 @@ class Translator:
                 j += 1
 
 
+    def resolveNegation(self, sentence):
+        i = 0
+        while i < len(sentence):
+            if sentence[i] == '<NEGATION>':
+                if sentence[i- 1] == "can": # negate can to cannot
+                    sentence[i - 1] = "cannot"
+                    sentence.pop(i)
+                else:
+                    j = i-1
+                    complete = 0
+                    while j >= 0: # search for verb to negate
+                        prev_token = sentence[j]
+                        if '<VERB>' in prev_token:
+                            sentence[j] = prev_token + " not"
+                            sentence.pop(i)
+                            complete = 1
+                            break
+                        j -= 1
+                    j = i-1
+                    while not complete and j >= 0: # if not search for subject to negate
+                        prev_token = sentence[j]
+                        if '<SUBJECT>' in prev_token:
+                            sentence[j] = prev_token + " not"
+                            sentence.pop(i)
+                            complete = 1
+                            break
+                        j -= 1
+                    j = i-1
+                    while not complete and j >= 0: # if not search for anything else to negate
+                        prev_token = sentence[j]
+                        if '>' in prev_token:
+                            sentence[j] = prev_token + " not"
+                            sentence.pop(i)
+                            complete = 1
+                            break
+                        j -= 1
+            i += 1
+
+    def localChanges(self, sentence):
+        i = 0
+        while i < len(sentence):
+            if sentence[i] == 'need<VERB>':
+                    sentence[i] = "need<VERB> to"
+            elif sentence[i] == "want<VERB>": # negate can to cannot
+                    sentence[i] = "want<VERB> to"
+            elif sentence[i] == "have<VERB>": # negate can to cannot
+                    sentence[i] = "have<VERB> to"
+            elif ('1' in sentence[i]) or '2' in (sentence[i]):
+                if '<VERB>' in sentence[i + 1] and 'NOUN' in sentence[i-1] and 'OBJECT' in sentence[i+2]:
+                    noun = sentence[i-1]
+                    obj = sentence[i+2]
+                    verb = sentence[i+1]
+                    sentence[i-1] = verb
+                    sentence[i+1] = obj
+                    sentence[i+2] = 'of ' + noun
+            i += 1
+
+
     # Find nearest verb and convert to past tense
     def resolvePastTense(self, sentence):
         i = 0
@@ -287,6 +345,7 @@ class Translator:
             tokens = token.split()
             if len(tokens) > 1:
 
+
                 sentence = sentence[:i] + tokens + sentence[i+1:]
             i += len(tokens)
         return sentence
@@ -312,6 +371,8 @@ class Translator:
             self.combineNouns(sentence)
             self.reorder(sentence)
             self.resolvePastTense(sentence)
+            self.localChanges(sentence)
+            self.resolveNegation(sentence)
 
             sentence[0] = sentence[0].capitalize()
 
