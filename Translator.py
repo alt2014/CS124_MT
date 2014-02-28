@@ -168,6 +168,9 @@ class Translator:
                         if not found:
                             translated_sentence.append(english_translations[0][0])
 
+                    if korean_pos == 'VV':
+                      translated_sentence[-1] = translated_sentence[-1] + '<VERB>'
+
                 prev_token = (korean_word, korean_pos)
             self.translated.append(translated_sentence)
 
@@ -177,14 +180,14 @@ class Translator:
         wasVerb = False
         while i < len(sentence):
             word = sentence[i]
-            if word.endswith('<SUBJECT>'):
+            if '<SUBJECT>' in word:
                 wasVerb = False
                 if i + 1 < len(sentence):
                     object_start = i + 1
-            elif word.endswith('<OBJECT>'):
+            elif '<OBJECT>' in word:
                 object_start = i
                 wasVerb = False
-            elif word.endswith('<VERB>') and i != object_start:
+            elif '<VERB>' in word and i != object_start:
                 verb = sentence.pop(i);
                 sentence.insert(object_start, verb)
                 wasVerb = True
@@ -224,7 +227,6 @@ class Translator:
 
           # Convert nearest noun to "few", "many", "several" or number to plural
           if word in ["few", "many", "several"] or (word.isdigit() and word != '1'):
-            print word
             j = i + 1
             while j < len(sentence):
                 next = sentence[j]
@@ -250,7 +252,9 @@ class Translator:
                     while j >= 0: # search for verb to negate
                         prev_token = sentence[j]
                         if '<VERB>' in prev_token:
-                            sentence[j] = prev_token + " not"
+                            #word = prev_token.split('VERB')
+                            #past tense
+                            sentence[j] = "do not " + prev_token;
                             sentence.pop(i)
                             complete = 1
                             break
@@ -258,8 +262,8 @@ class Translator:
                     j = i-1
                     while not complete and j >= 0: # if not search for subject to negate
                         prev_token = sentence[j]
-                        if '<SUBJECT>' in prev_token:
-                            sentence[j] = prev_token + " not"
+                        if '<SUBJECT>' in prev_token or '<OBJECT>':
+                            sentence[j] = "no " + prev_token
                             sentence.pop(i)
                             complete = 1
                             break
@@ -268,7 +272,7 @@ class Translator:
                     while not complete and j >= 0: # if not search for anything else to negate
                         prev_token = sentence[j]
                         if '>' in prev_token:
-                            sentence[j] = prev_token + " not"
+                            sentence[j] = "not " + prev_token
                             sentence.pop(i)
                             complete = 1
                             break
@@ -279,11 +283,11 @@ class Translator:
         i = 0
         while i < len(sentence):
             if sentence[i] == 'need<VERB>':
-                    sentence[i] = "need<VERB> to"
+                    sentence[i] = "need to<VERB>"
             elif sentence[i] == "want<VERB>": # negate can to cannot
-                    sentence[i] = "want<VERB> to"
+                    sentence[i] = "want to<VERB>"
             elif sentence[i] == "have<VERB>": # negate can to cannot
-                    sentence[i] = "have<VERB> to"
+                    sentence[i] = "have to<VERB>"
             elif ('1' in sentence[i]) or '2' in (sentence[i]):
                 if '<VERB>' in sentence[i + 1] and 'NOUN' in sentence[i-1] and 'OBJECT' in sentence[i+2]:
                     noun = sentence[i-1]
@@ -294,6 +298,42 @@ class Translator:
                     sentence[i+2] = 'of ' + noun
             i += 1
 
+    def resolveToVerbPairs(self, sentence):
+        i = len(sentence) - 1
+        while  i > 0:
+            j = i - 1
+            currToken = sentence[i]
+            prevToken = sentence[j]
+            if '<VERB>' in currToken and '<VERB>' in prevToken:
+                currWord = currToken[:currToken.find('<')]
+                prevWord = prevToken[:prevToken.find('<')]
+                if prevWord.endswith(' to'):
+                    sentence[i] = prevWord + ' ' + currToken
+                    sentence.pop(j)
+            i -=1;
+
+
+
+    def resolveCompoundVerbs(self, sentence):
+        i = len(sentence) - 1
+        while  i > 0 :
+            j = i - 1
+            currToken = sentence[i]
+            prevToken = sentence[j]
+            if '<VERB>' in currToken and '<VERB>' in prevToken:
+                currWord = currToken[:currToken.find('<')]
+                prevWord = prevToken[:prevToken.find('<')]
+                if prevWord.endswith(' to'):
+                    sentence[i] = prevWord + ' ' + currToken
+                    sentence.pop(j)
+                elif (en.is_verb(prevWord) or 'do not ' in prevWord or 'did not' in prevWord) and en.is_verb(currWord):
+                    sentence[i] = en.verb.present_participle(currWord) + '<' + currToken[currToken.find('<'):]
+                    i -= 1
+                else:
+                    i -= 1
+            else:
+                i -=1
+
 
     # Find nearest verb and convert to past tense
     def resolvePastTense(self, sentence):
@@ -303,12 +343,23 @@ class Translator:
                 j = i-1
                 while j >= 0:
                     prev_token = sentence[j]
-                    if '<VERB>' in prev_token:
-                        past_tense = en.verb.past(prev_token[:prev_token.find('<')])
+                    if '<VERB>' in prev_token and en.is_verb(prev_token[:prev_token.find('<')]):
+                        if prev_token.startswith('do not'): #Resolves negated past tense
+                            past_tense = 'did not' + prev_token[6:]
+                        else:
+                            past_tense = en.verb.past(prev_token[:prev_token.find('<')])
                         prev_token = prev_token.replace(prev_token[:prev_token.find('<')], "") # Remove word
                         sentence[j] = past_tense + prev_token
                         sentence.pop(i)
                         break
+                    if prev_token == 'be':
+                        past_tense = 'was'
+                        sentence[j] = past_tense + '<VERB>'
+                        sentence.pop(i)
+                    if prev_token == 'do':
+                        past_tense = 'did'
+                        sentence[j] = past_tense + '<VERB>'
+                        sentence.pop(i)
                     j -= 1
             i += 1
 
@@ -323,7 +374,7 @@ class Translator:
                 tagged = '<' + splitWord[1]
                 word = splitWord[0]
             annotated = self.unigram_tagger.tag([word])
-            if annotated[0][1] == 'NN' or tagged == '<OBJECT>' or tagged == '<SUBJECT>':
+            if annotated[0][1] == 'NN' or '<OBJECT>' in tagged or '<SUBJECT>' in tagged:
                 if wasNoun:
                     sentence[i] = sentence[i - 1] + ' ' + word + tagged
                     sentence.pop(i - 1)
@@ -337,6 +388,33 @@ class Translator:
             else:
                 wasNoun = False
                 i += 1
+
+    def  combineAdj(self, sentence):
+        wasAdj = False
+        i = 0
+        while  i < len(sentence):
+            word = sentence[i]
+            tagged = ""
+            if '<' in word:
+                splitWord = word.split('<')
+                tagged = '<' + splitWord[1]
+                word = splitWord[0]
+            if en.is_adjective(word):
+                if (wasAdj):
+                    sentence[i] = sentence[i - 1] + ', ' + sentence[i]
+                    sentence.pop(i - 1)
+                else:
+                    wasAdj = True;
+            elif (en.is_noun(word) or '<NOUN>' in tagged) and wasAdj:
+                sentence[i] = sentence[i - 1] + ' ' + sentence[i]
+                if ('<NOUN>' in sentence[i]) == False:
+                    sentence[i] = sentence[i] + '<NOUN>'
+                sentence.pop(i - 1)
+                #if there's no noun tag, add a tag
+                wasAdj = False;
+            #what happens if an acjective doesn't follow a noun?
+
+    #combine adverbs, subordinating conjunctions
 
     def breakup(self,sentence):
         i = 0
@@ -355,26 +433,41 @@ class Translator:
         for i in xrange(len(sentence)):
             token = sentence[i]
             tag = self.unigram_tagger.tag([token])
-            if tag[0][1] == 'VB' or tag[0][1] == 'BE':
+            if tag[0][1] == 'VB' or tag[0][1] == 'BE' or token == 'do':
                 sentence[i] = token + '<VERB>'
-            if tag[0][1] == 'NN':
+            elif tag[0][1] == 'NN':
                 sentence[i] = token + '<NOUN>'
+            elif tag[0][1]:
+                sentence[i] = token + tag[0][1]
+
+
 
     
     ### TO DO: PREPROCESS TRANSLATED SENTENCES (correct grammar, reorder)
     def postprocess(self):
         for sentence in self.translated:
-            sentence = self.breakup(sentence)
-            self.tagVerbAndNoun(sentence)
+            
             self.resolvePlural(sentence)
             self.resolvePossessive(sentence)
+            self.resolveNegation(sentence)
+            self.resolvePastTense(sentence)
             self.combineNouns(sentence)
-            self.reorder(sentence)
+            self.tagVerbAndNoun(sentence)
             self.resolvePastTense(sentence)
             self.localChanges(sentence)
-            self.resolveNegation(sentence)
+            self.resolveToVerbPairs(sentence)
+            self.reorder(sentence)
+            self.resolveCompoundVerbs(sentence)
+            #sentence = self.breakup(sentence)
+
+            #
+
+
+            
 
             sentence[0] = sentence[0].capitalize()
+
+
 
             self.postprocessed.append(sentence)
             printSentences(sentence)
