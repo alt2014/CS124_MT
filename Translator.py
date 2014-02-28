@@ -15,6 +15,8 @@ class Translator:
         self.postprocessed = []
         brown_a = nltk.corpus.brown.tagged_sents()
         self.unigram_tagger = nltk.UnigramTagger(brown_a)
+        self.bgm = nltk.collocations.BigramAssocMeasures()
+        self.bigram_finder = nltk.collocations.BigramCollocationFinder.from_words(nltk.corpus.brown.words())
 
     def preprocess(self, tokenized_sentences):
         f = open(tokenized_sentences, 'r')
@@ -193,7 +195,6 @@ class Translator:
                 wasVerb = True
             elif wasVerb:
                 object_start = i
-                #insert a comma
                 wasVerb = False
             i = i + 1
 
@@ -210,6 +211,8 @@ class Translator:
                     tagged = self.unigram_tagger.tag([sentence[i]])
                     if tagged[0][1] == 'NN' or sentence[i].endswith('<OBJECT>') or sentence[i].endswith('<SUBJECT>'):
                         sentence[i] = resolvedWord + ' ' + sentence[i]
+                        if ('<' in sentence[i]) == False:
+                            sentence[i] = sentence[i] + '<NOUN>'
                         sentence.pop(splitWordPos)
                         i -= 1
                         break
@@ -230,11 +233,14 @@ class Translator:
             j = i + 1
             while j < len(sentence):
                 next = sentence[j]
-                next_word = next[:next.find('<')]
+                nextSplit = next.split('<')
+                next_word = nextSplit[0]
                 if ('<NOUN>' in next or en.is_noun(next_word)) and '<PLURAL>' not in next:
                     pluralized = en.noun.plural(next_word)
-                    next = next.replace(next[:next.find('<')], "") # Remove word
-                    sentence[j] = pluralized + next
+                    tag = ""
+                    if (len(nextSplit) == 2):
+                        tag = '<' + nextSplit[1]
+                    sentence[j] = pluralized + tag
                     break
                 j += 1
 
@@ -327,8 +333,9 @@ class Translator:
                     sentence[i] = prevWord + ' ' + currToken
                     sentence.pop(j)
                 elif (en.is_verb(prevWord) or 'do not ' in prevWord or 'did not' in prevWord) and en.is_verb(currWord):
-                    sentence[i] = en.verb.present_participle(currWord) + '<' + currToken[currToken.find('<'):]
-                    i -= 1
+                    sentence[i] = prevWord + ' ' + en.verb.present_participle(currWord) + currToken[currToken.find('<'):]
+                    sentence.pop(j)
+                    i -= 2
                 else:
                     i -= 1
             else:
@@ -389,32 +396,39 @@ class Translator:
                 wasNoun = False
                 i += 1
 
-    def  combineAdj(self, sentence):
-        wasAdj = False
+    def resolveMD(self, sentence):
         i = 0
-        while  i < len(sentence):
-            word = sentence[i]
-            tagged = ""
-            if '<' in word:
-                splitWord = word.split('<')
-                tagged = '<' + splitWord[1]
-                word = splitWord[0]
-            if en.is_adjective(word):
-                if (wasAdj):
-                    sentence[i] = sentence[i - 1] + ', ' + sentence[i]
-                    sentence.pop(i - 1)
-                else:
-                    wasAdj = True;
-            elif (en.is_noun(word) or '<NOUN>' in tagged) and wasAdj:
-                sentence[i] = sentence[i - 1] + ' ' + sentence[i]
-                if ('<NOUN>' in sentence[i]) == False:
-                    sentence[i] = sentence[i] + '<NOUN>'
-                sentence.pop(i - 1)
-                #if there's no noun tag, add a tag
-                wasAdj = False;
-            #what happens if an acjective doesn't follow a noun?
+        while i < len(sentence):
+            token = sentence[i]
+            if '<' in token:
+                token = token[:token.find('<')]
+            tokenPOS = self.unigram_tagger.tag([token])[0][1]
+            if (tokenPOS != None and 'MD' in tokenPOS):
+                isNotVB = False
+                if i + 1 < len(sentence):
+                    nextToken = sentence[i + 1].split('<')[0]
+                    nextTokenPos = self.unigram_tagger.tag(nextToken)[0][1]
+                    isNotVB = nextTokenPos == None or (nextTokenPos != None and ('VB' in nextTokenPos) == False)
+                if i + 1 >= len(sentence) or isNotVB:
+                    j = i-1
+                    while j >= 0:
+                        tokenAtJ = sentence[j]
+                        tagtAtJ = tokenAtJ
+                        if '<' in tokenAtJ:
+                            tagtAtJ = tokenAtJ[:tokenAtJ.find('<')]
+                        pos = self.unigram_tagger.tag([tagtAtJ])[0][1]
+                        if (pos != None and 'VB' in pos) or '<VERB>' in tokenAtJ[tokenAtJ.find('<'):]:
+                            modified = token + ' ' + tokenAtJ
+                            sentence[j] = modified
+                            sentence.pop(i)
+                            i-=1
+                            break
+                        j -= 1
+                    if j==-1:
+                        sentence.pop(i)
+                        i-=1
+            i += 1
 
-    #combine adverbs, subordinating conjunctions
 
     def breakup(self,sentence):
         i = 0
@@ -422,7 +436,6 @@ class Translator:
             token = sentence[i]
             tokens = token.split()
             if len(tokens) > 1:
-
 
                 sentence = sentence[:i] + tokens + sentence[i+1:]
             i += len(tokens)
@@ -437,29 +450,54 @@ class Translator:
                 sentence[i] = token + '<VERB>'
             elif tag[0][1] == 'NN':
                 sentence[i] = token + '<NOUN>'
-            elif tag[0][1]:
-                sentence[i] = token + tag[0][1]
+
+    def resolveINPOS(self, sentence):
+        i = 0;
+        while i < len(sentence):
+            currToken = sentence[i]
+            currTag = self.unigram_tagger.tag([currToken])
+            if currTag[0][1] == 'IN':
+              if (i + 2 < len(sentence)):
+                  j = i + 1;
+                  k = i + 2;
+                  bfToken = sentence[k]
+                  bfWord = bfToken[:bfToken.find('<')]
+                  afToken = sentence[j]
+                  afWord = afToken[:afToken.find('<')]
+                  tags = self.unigram_tagger.tag([bfToken, afToken])
+                  if (tags[0][1] in ['VBD','VB', 'NN', 'NNS', 'PPS', 'BE'] or bfToken[bfToken.find('<'):] in ['<OBJECT>', '<SUBJECT>', '<NOUN>']) and (tags[1][1] in ['NN', 'NNS', 'PPS'] or afToken[afToken.find('<'):] in ['<OBJECT>', '<SUBJECT>', '<NOUN>']):
+                      sentence[i] = bfToken
+                      sentence[j] = currToken
+                      sentence[k] = afToken
+                      i += 1
+            i +=1
 
 
+    def stripTags(self, sentence):
+        for i in xrange(len(sentence)):
+            token = sentence[i]
+            if '<' in token:
+                sentence[i] = token[:token.find('<')]
 
-    
     ### TO DO: PREPROCESS TRANSLATED SENTENCES (correct grammar, reorder)
     def postprocess(self):
         for sentence in self.translated:
             
             self.resolvePlural(sentence)
+            self.resolvePastTense(sentence)
             self.resolvePossessive(sentence)
             self.resolveNegation(sentence)
-            self.resolvePastTense(sentence)
+            
             self.combineNouns(sentence)
+            self.resolveINPOS(sentence)
             self.tagVerbAndNoun(sentence)
             self.resolvePastTense(sentence)
             self.localChanges(sentence)
             self.resolveToVerbPairs(sentence)
             self.reorder(sentence)
             self.resolveCompoundVerbs(sentence)
-            #sentence = self.breakup(sentence)
-
+            self.resolveMD(sentence)
+            self.stripTags(sentence)
             #
 
 
